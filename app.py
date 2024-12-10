@@ -1,135 +1,161 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from db import init_db, inserir_transacao, obter_transacoes, atualizar_transacao, obter_transacao_por_id
+import plotly.graph_objects as go
+import calendar
+from db import criar_tabela, adicionar_transacao, visualizar_transacoes, editar_transacao
 
 # Inicializa o banco de dados
-init_db()
+criar_tabela()
 
-# Menu lateral
-menu = st.sidebar.selectbox("Menu", ["Cadastro", "Visualização", "Edição", "Gráficos"])
+# Função auxiliar para filtrar dados por mês e ano
+def filtrar_por_mes_ano(df, mes, ano):
+    if mes != "Nenhum":
+        # Converte o nome do mês para número (ex: 'Jan' -> 1)
+        mes_numero = list(calendar.month_abbr).index(mes)
+        df = df[df['Data'].dt.month == mes_numero]
+    if ano != "Nenhum":
+        df = df[df['Data'].dt.year == int(ano)]
+    return df
 
-# Cadastro de transações
-if menu == "Cadastro":
-    st.header("Cadastro de Transações")
-    with st.form("form_cadastro"):
-        data = st.date_input("Data")
-        categoria = st.text_input("Categoria")
-        descricao = st.text_input("Descrição")
-        tipo = st.selectbox("Tipo", ["Entrada", "Saída"])
-        valor = st.number_input("Valor", format="%.2f")
-        submit = st.form_submit_button("Salvar")
-        
-        if submit:
-            inserir_transacao(data, categoria, descricao, tipo, valor)
-            st.success("Transação cadastrada com sucesso!")
+# Função de cadastro
+def cadastrar_transacao():
+    st.header("➕ Cadastrar Transação")
+    
+    descricao = st.text_input("📝 Descrição")
+    tipo = st.selectbox("🔄 Tipo", ["Entrada", "Saída"])
+    categoria = st.text_input("📂 Categoria")
+    valor = st.number_input("💰 Valor", min_value=0.0, step=0.01)
+    data = st.date_input("📅 Data")
+    
+    if st.button("✅ Salvar"):
+        if descricao and tipo and categoria and valor > 0:
+            adicionar_transacao(descricao, tipo, categoria, valor, data)
+            st.success("✅ Transação adicionada com sucesso!")
+        else:
+            st.error("⚠️ Por favor, preencha todos os campos.")
 
-# Visualização de transações
-elif menu == "Visualização":
-    st.header("Transações Cadastradas")
-    transacoes = obter_transacoes()
-    if transacoes:
-        df = pd.DataFrame(transacoes, columns=["ID", "Data", "Categoria", "Descrição", "Tipo", "Valor"])
-        st.dataframe(df)
-    else:
-        st.warning("Nenhuma transação cadastrada.")
+# Função de visualização com filtro
+def visualizar_transacoes_func():
+    st.header("📊 Visualizar Transações")
+    dados = visualizar_transacoes()
 
-# Edição de transações
-elif menu == "Edição":
-    st.header("Editar Transações")
-    transacoes = obter_transacoes()
-    if transacoes:
-        df = pd.DataFrame(transacoes, columns=["ID", "Data", "Categoria", "Descrição", "Tipo", "Valor"])
-        transacao_id = st.selectbox("Selecione a transação para editar", df["ID"])
-        transacao = obter_transacao_por_id(transacao_id)
-        if transacao:
-            with st.form("form_edicao"):
-                data = st.date_input("Data", value=pd.to_datetime(transacao[1]))
-                categoria = st.text_input("Categoria", value=transacao[2])
-                descricao = st.text_input("Descrição", value=transacao[3])
-                tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if transacao[4] == "Entrada" else 1)
-                valor = st.number_input("Valor", format="%.2f", value=transacao[5])
-                submit = st.form_submit_button("Atualizar")
-
-                if submit:
-                    atualizar_transacao(transacao_id, data, categoria, descricao, tipo, valor)
-                    st.success("Transação atualizada com sucesso!")
-    else:
-        st.warning("Nenhuma transação disponível para editar.")
-
-# Gráficos
-elif menu == "Gráficos":
-    st.header("Gráficos de Gastos por Mês")
-    transacoes = obter_transacoes()
-    if transacoes:
-        # Convertendo os dados para um DataFrame
-        df = pd.DataFrame(transacoes, columns=["ID", "Data", "Categoria", "Descrição", "Tipo", "Valor"])
-        
-        # Transformando a coluna Data para datetime e extraindo o mês
+    if dados:
+        df = pd.DataFrame(dados, columns=["ID", "Descrição", "Tipo", "Categoria", "Valor", "Data"])
         df['Data'] = pd.to_datetime(df['Data'])
-        
-        # Extraindo o nome do mês abreviado (Jan, Fev, Mar, etc.)
-        df['Mês'] = df['Data'].dt.strftime('%b')  # Nome abreviado do mês
-        
-        # Adicionando uma coluna para indicar o tipo de transação (Entrada ou Saída)
-        df_entrada = df[df['Tipo'] == "Entrada"]
-        df_saida = df[df['Tipo'] == "Saída"]
 
-        # Agrupando por mês e somando os valores
-        df_entrada = df_entrada.groupby('Mês').agg({'Valor': 'sum'}).reset_index()
-        df_entrada['Tipo'] = 'Entrada'
-        
-        df_saida = df_saida.groupby('Mês').agg({'Valor': 'sum'}).reset_index()
-        df_saida['Tipo'] = 'Saída'
-        
-        # Unindo os dois DataFrames (Entrada e Saída)
-        df_grafico = pd.concat([df_entrada, df_saida], ignore_index=True)
-        
-        # Calculando os totais de Entradas e Saídas
-        total_entrada = df_entrada['Valor'].sum()
-        total_saida = df_saida['Valor'].sum()
+        # Filtros de mês e ano
+        meses = ["Nenhum"] + list(calendar.month_abbr[1:])
+        anos = ["Nenhum"] + sorted(df['Data'].dt.year.unique().astype(str))
 
-        # Exibindo os cartões de Entradas e Saídas com os totais
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown(f"""
-                <div style="background-color: green; padding: 10px; border-radius: 10px; color: white;">
-                    <h3>Entradas</h3>
-                    <p>R$ {total_entrada:,.2f}</p>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-                <div style="background-color: darkred; padding: 10px; border-radius: 10px; color: white;">
-                    <h3>Saídas</h3>
-                    <p>R$ {total_saida:,.2f}</p>
-                </div>
-            """, unsafe_allow_html=True)
+        mes = st.selectbox("📅 Filtrar por Mês", meses)
+        ano = st.selectbox("📆 Filtrar por Ano", anos)
 
-        # Criando o gráfico com Plotly
-        fig = px.bar(
-            df_grafico,
-            x="Mês",
-            y="Valor",
-            color="Tipo",
-            barmode="group",  # Usando 'group' para separar as barras
-            color_discrete_map={"Entrada": "green", "Saída": "darkred"},
-            title="Gastos por Mês",
-            labels={"Valor": "Valor (R$)", "Mês": "Mês"}
-        )
-        
-        # Formatando os valores no eixo Y para o formato em reais (R$)
-        fig.update_layout(
-            yaxis_tickformat="R$,.2f",  # Formato em Reais (R$)
-            xaxis_title="Mês",
-            yaxis_title="Valor (R$)"
-        )
-        
-        # Adicionando rótulos nas colunas do gráfico
-        fig.update_traces(texttemplate='%{y:$.2f}', textposition='outside', showlegend=False)
-        
-        st.plotly_chart(fig, use_container_width=True)
+        df_filtrado = filtrar_por_mes_ano(df, mes, ano)
+
+        st.dataframe(df_filtrado)
     else:
-        st.warning("Nenhuma transação cadastrada para gerar gráficos.")
+        st.warning("⚠️ Nenhuma transação encontrada.")
+
+# Função de gráfico com filtro
+def grafico_entradas_saidas_mes():
+    st.header("📈 Comparação de Entradas vs Saídas por Mês")
+    dados = visualizar_transacoes()
+
+    if dados:
+        df = pd.DataFrame(dados, columns=["ID", "Descrição", "Tipo", "Categoria", "Valor", "Data"])
+        df['Data'] = pd.to_datetime(df['Data'])
+        df['Mês'] = df['Data'].dt.strftime("%b")
+        df['Ano'] = df['Data'].dt.year
+
+        # Filtros de mês e ano
+        meses = ["Nenhum"] + list(df['Mês'].unique())
+        anos = ["Nenhum"] + sorted(df['Ano'].astype(str).unique())
+
+        mes = st.selectbox("📅 Filtrar por Mês", meses)
+        ano = st.selectbox("📆 Filtrar por Ano", anos)
+
+        df_filtrado = filtrar_por_mes_ano(df, mes, ano)
+
+        if not df_filtrado.empty:
+            resumo = df_filtrado.groupby(["Mês", "Tipo"])["Valor"].sum().unstack(fill_value=0)
+
+            # Garantindo que os valores sejam listas para evitar erros
+            entradas = resumo.get('Entrada', pd.Series(0, index=resumo.index)).tolist()
+            saidas = resumo.get('Saída', pd.Series(0, index=resumo.index)).tolist()
+
+            fig = go.Figure(data=[
+                go.Bar(name='Entradas', x=resumo.index, y=entradas, marker_color='green'),
+                go.Bar(name='Saídas', x=resumo.index, y=saidas, marker_color='red')
+            ])
+
+            fig.update_layout(
+                title="Comparação de Entradas e Saídas por Mês",
+                xaxis_title="Mês",
+                yaxis_title="Valor (R$)",
+                barmode='group'
+            )
+
+            st.plotly_chart(fig)
+        else:
+            st.warning("⚠️ Nenhuma transação encontrada para os filtros selecionados.")
+    else:
+        st.warning("⚠️ Nenhuma transação encontrada.")
+
+# Função de edição de transações
+def editar_transacoes():
+    st.header("✏️ Editar Transações")
+    
+    # Carrega as transações para edição
+    dados = visualizar_transacoes()
+
+    if dados:
+        df = pd.DataFrame(dados, columns=["ID", "Descrição", "Tipo", "Categoria", "Valor", "Data"])
+        df['Data'] = pd.to_datetime(df['Data'])
+
+        # Filtros de mês e ano
+        meses = ["Nenhum"] + list(calendar.month_abbr[1:])
+        anos = ["Nenhum"] + sorted(df['Data'].dt.year.unique().astype(str))
+
+        mes = st.selectbox("📅 Filtrar por Mês", meses)
+        ano = st.selectbox("📆 Filtrar por Ano", anos)
+
+        df_filtrado = filtrar_por_mes_ano(df, mes, ano)
+
+        # Seleção da transação a ser editada
+        transacao_id = st.selectbox("📝 Selecione a transação para editar", df_filtrado["ID"].tolist())
+
+        # Carrega a transação selecionada
+        transacao = df_filtrado[df_filtrado["ID"] == transacao_id].iloc[0]
+
+        descricao = st.text_input("📝 Descrição", transacao["Descrição"])
+        tipo = st.selectbox("🔄 Tipo", ["Entrada", "Saída"], index=["Entrada", "Saída"].index(transacao["Tipo"]))
+        categoria = st.text_input("📂 Categoria", transacao["Categoria"])
+        valor = st.number_input("💰 Valor", min_value=0.0, step=0.01, value=transacao["Valor"])
+        data = st.date_input("📅 Data", value=transacao["Data"])
+
+        if st.button("✅ Atualizar"):
+            editar_transacao(transacao_id, descricao, tipo, categoria, valor, data)
+            st.success("✅ Transação atualizada com sucesso!")
+        else:
+            st.warning("⚠️ Não foram feitas alterações.")
+    else:
+        st.warning("⚠️ Nenhuma transação encontrada.")
+
+# Sidebar com menu suspenso
+st.sidebar.title("💼 Menu")
+menu = st.sidebar.selectbox(
+    "Escolha uma opção:",
+    ["🏠 Home", "➕ Cadastrar Transação", "📊 Visualizar Transações", "✏️ Editar Transações", "📈 Gráfico Entradas vs Saídas por Mês"]
+)
+
+# Exibição de acordo com a opção selecionada na sidebar
+if menu == "🏠 Home":
+    st.title("🏠 Bem-vindo ao Controle de Gastos")
+elif menu == "➕ Cadastrar Transação":
+    cadastrar_transacao()
+elif menu == "📊 Visualizar Transações":
+    visualizar_transacoes_func()
+elif menu == "✏️ Editar Transações":
+    editar_transacoes()
+elif menu == "📈 Gráfico Entradas vs Saídas por Mês":
+    grafico_entradas_saidas_mes()

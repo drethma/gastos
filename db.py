@@ -1,63 +1,50 @@
 import sqlite3
 
-# Inicializa o banco de dados e cria a tabela, se necessário
-def init_db():
-    conn = sqlite3.connect("gastos.db")
-    cursor = conn.cursor()
+# Função para criar a tabela de transações
+def criar_tabela():
+    conexao = sqlite3.connect("transacoes.db")
+    cursor = conexao.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transacoes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT,
-            categoria TEXT,
             descricao TEXT,
             tipo TEXT,
-            valor REAL
+            categoria TEXT,
+            valor REAL,
+            data TEXT
         )
     """)
-    conn.commit()
-    conn.close()
+    conexao.commit()
+    conexao.close()
 
-# Conecta ao banco de dados
-def get_connection():
-    return sqlite3.connect("gastos.db")
-
-# Insere uma transação no banco de dados
-def inserir_transacao(data, categoria, descricao, tipo, valor):
-    conn = get_connection()
-    cursor = conn.cursor()
+# Função para adicionar uma nova transação
+def adicionar_transacao(descricao, tipo, categoria, valor, data):
+    conexao = sqlite3.connect("transacoes.db")
+    cursor = conexao.cursor()
     cursor.execute("""
-        INSERT INTO transacoes (data, categoria, descricao, tipo, valor)
+        INSERT INTO transacoes (descricao, tipo, categoria, valor, data)
         VALUES (?, ?, ?, ?, ?)
-    """, (data, categoria, descricao, tipo, valor))
-    conn.commit()
-    conn.close()
+    """, (descricao, tipo, categoria, valor, data))
+    conexao.commit()
+    conexao.close()
 
-# Obtém todas as transações
-def obter_transacoes():
-    conn = get_connection()
-    cursor = conn.cursor()
+# Função para visualizar todas as transações
+def visualizar_transacoes():
+    conexao = sqlite3.connect("transacoes.db")
+    cursor = conexao.cursor()
     cursor.execute("SELECT * FROM transacoes")
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    transacoes = cursor.fetchall()
+    conexao.close()
+    return transacoes
 
-# Atualiza uma transação existente
-def atualizar_transacao(id, data, categoria, descricao, tipo, valor):
-    conn = get_connection()
-    cursor = conn.cursor()
+# Função para editar uma transação existente
+def editar_transacao(id, descricao, tipo, categoria, valor, data):
+    conexao = sqlite3.connect("transacoes.db")
+    cursor = conexao.cursor()
     cursor.execute("""
         UPDATE transacoes
-        SET data = ?, categoria = ?, descricao = ?, tipo = ?, valor = ?
+        SET descricao = ?, tipo = ?, categoria = ?, valor = ?, data = ?
         WHERE id = ?
-    """, (data, categoria, descricao, tipo, valor, id))
-    conn.commit()
-    conn.close()
-
-# Obtém uma transação específica pelo ID
-def obter_transacao_por_id(id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM transacoes WHERE id = ?", (id,))
-    transacao = cursor.fetchone()
-    conn.close()
-    return transacao
+    """, (descricao, tipo, categoria, valor, data, id))
+    conexao.commit()
+    conexao.close()
